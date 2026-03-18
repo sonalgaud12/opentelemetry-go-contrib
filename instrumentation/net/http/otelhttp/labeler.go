@@ -54,8 +54,10 @@ func (l *labeler) get() []attribute.KeyValue {
 	return ret
 }
 
-type handlerLabelerKeyType struct{}
-type clientLabelerKeyType struct{}
+type (
+	handlerLabelerKeyType struct{}
+	clientLabelerKeyType  struct{}
+)
 
 var (
 	handlerLabelerKey handlerLabelerKeyType
