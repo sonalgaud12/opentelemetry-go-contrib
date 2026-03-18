@@ -732,7 +732,10 @@ func TestLabelerIsolation(t *testing.T) {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
-			resp.Body.Close()
+			if err := resp.Body.Close(); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
 			w.WriteHeader(http.StatusOK)
 		}),
 		"test_server",
@@ -740,7 +743,9 @@ func TestLabelerIsolation(t *testing.T) {
 	))
 	defer ts.Close()
 
-	resp, err := http.Get(ts.URL)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL, http.NoBody)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode, "handler must not have errored")
 	require.NoError(t, resp.Body.Close())

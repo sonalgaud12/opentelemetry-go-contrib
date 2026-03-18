@@ -57,8 +57,10 @@ func (l *labeler) get() []attribute.KeyValue {
 type handlerLabelerKeyType struct{}
 type clientLabelerKeyType struct{}
 
-var handlerLabelerKey handlerLabelerKeyType
-var clientLabelerKey clientLabelerKeyType
+var (
+	handlerLabelerKey handlerLabelerKeyType
+	clientLabelerKey  clientLabelerKeyType
+)
 
 // AddHandlerMetricsAttributes adds custom attributes to the server-side metrics
 // recorded for the in-flight request.
