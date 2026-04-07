@@ -10,14 +10,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-
-	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin/internal/semconv"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	oteltrace "go.opentelemetry.io/otel/trace"
+
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin/internal/semconv"
 )
 
 const (
@@ -40,7 +40,7 @@ func Middleware(service string, opts ...Option) gin.HandlerFunc {
 	}
 	tracer := cfg.TracerProvider.Tracer(
 		ScopeName,
-		oteltrace.WithInstrumentationVersion(Version()),
+		oteltrace.WithInstrumentationVersion(Version),
 	)
 	if cfg.Propagators == nil {
 		cfg.Propagators = otel.GetTextMapPropagator()
@@ -54,7 +54,7 @@ func Middleware(service string, opts ...Option) gin.HandlerFunc {
 
 	meter := cfg.MeterProvider.Meter(
 		ScopeName,
-		metric.WithInstrumentationVersion(Version()),
+		metric.WithInstrumentationVersion(Version),
 	)
 
 	sc := semconv.NewHTTPServer(meter)
@@ -113,21 +113,20 @@ func Middleware(service string, opts ...Option) gin.HandlerFunc {
 
 		status := c.Writer.Status()
 		span.SetStatus(sc.Status(status))
-		if status > 0 {
-			span.SetAttributes(semconv.HTTPStatusCode(status))
-		}
+		span.SetAttributes(sc.ResponseTraceAttrs(semconv.ResponseTelemetry{
+			StatusCode: status,
+			WriteBytes: int64(c.Writer.Size()),
+		})...)
+
 		if len(c.Errors) > 0 {
 			span.SetStatus(codes.Error, c.Errors.String())
 			for _, err := range c.Errors {
-				span.RecordError(err.Err)
+				span.RecordError(err.Err) //nolint:forbidigo // TODO: https://github.com/open-telemetry/opentelemetry-go-contrib/issues/8441
 			}
 		}
 
 		// Record the server-side attributes.
 		var additionalAttributes []attribute.KeyValue
-		if c.FullPath() != "" {
-			additionalAttributes = append(additionalAttributes, sc.Route(c.FullPath()))
-		}
 		if cfg.MetricAttributeFn != nil {
 			additionalAttributes = append(additionalAttributes, cfg.MetricAttributeFn(c.Request)...)
 		}
@@ -141,11 +140,12 @@ func Middleware(service string, opts ...Option) gin.HandlerFunc {
 			MetricAttributes: semconv.MetricAttributes{
 				Req:                  c.Request,
 				StatusCode:           status,
+				Route:                c.FullPath(),
 				AdditionalAttributes: additionalAttributes,
 			},
 			MetricData: semconv.MetricData{
-				RequestSize: c.Request.ContentLength,
-				ElapsedTime: float64(time.Since(requestStartTime)) / float64(time.Millisecond),
+				RequestSize:     c.Request.ContentLength,
+				RequestDuration: time.Since(requestStartTime),
 			},
 		})
 	}
@@ -155,7 +155,7 @@ func Middleware(service string, opts ...Option) gin.HandlerFunc {
 // span in the given context. This is a replacement for
 // gin.Context.HTML function - it invokes the original function after
 // setting up the span.
-func HTML(c *gin.Context, code int, name string, obj interface{}) {
+func HTML(c *gin.Context, code int, name string, obj any) {
 	var tracer oteltrace.Tracer
 	tracerInterface, ok := c.Get(tracerKey)
 	if ok {
@@ -164,7 +164,7 @@ func HTML(c *gin.Context, code int, name string, obj interface{}) {
 	if !ok {
 		tracer = otel.GetTracerProvider().Tracer(
 			ScopeName,
-			oteltrace.WithInstrumentationVersion(Version()),
+			oteltrace.WithInstrumentationVersion(Version),
 		)
 	}
 	savedContext := c.Request.Context()
