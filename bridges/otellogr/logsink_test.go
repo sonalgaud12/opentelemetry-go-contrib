@@ -118,11 +118,13 @@ func TestNewLogSink(t *testing.T) {
 
 func TestLogSink(t *testing.T) {
 	const name = "name"
+	ctx := context.WithValue(t.Context(), "key", "value") //nolint:revive,staticcheck // test context
 
 	for _, tt := range []struct {
 		name         string
 		f            func(*logr.Logger)
 		wantSeverity func(int) log.Severity
+		wantCtx      context.Context
 		want         logtest.Recording
 	}{
 		{
@@ -352,6 +354,31 @@ func TestLogSink(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "info_with_default_context",
+			f: func(l *logr.Logger) {
+				l.Info("msg")
+			},
+			//nolint:usetesting // This place was originally intended to test the default context.
+			wantCtx: context.Background(),
+			want: logtest.Recording{
+				logtest.Scope{Name: name}: {
+					{Body: log.StringValue("msg"), Severity: log.SeverityInfo},
+				},
+			},
+		},
+		{
+			name: "info_with_context_in_key_values",
+			f: func(l *logr.Logger) {
+				l.WithValues("ctx", ctx).Info("msg")
+			},
+			wantCtx: ctx,
+			want: logtest.Recording{
+				logtest.Scope{Name: name}: {
+					{Body: log.StringValue("msg"), Severity: log.SeverityInfo},
+				},
+			},
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := logtest.NewRecorder()
@@ -368,59 +395,31 @@ func TestLogSink(t *testing.T) {
 					return r
 				}),
 			)
-		})
-	}
-}
 
-func TestLogSinkContext(t *testing.T) {
-	name := "name"
-	ctx := context.WithValue(t.Context(), "key", "value") //nolint:revive,staticcheck // test context
-
-	tests := []struct {
-		name string
-		f    func(*logr.Logger)
-		want logtest.Recording
-	}{
-		{
-			name: "default",
-			f: func(l *logr.Logger) {
-				l.Info("msg")
-			},
-			want: logtest.Recording{
-				logtest.Scope{Name: name}: {
-					//nolint:usetesting // This place was originally intended to test the default context.
-					{Context: context.Background()},
-				},
-			},
-		},
-		{
-			name: "context in KeyAndValues",
-			f: func(l *logr.Logger) {
-				l.WithValues("ctx", ctx).Info("msg")
-			},
-			want: logtest.Recording{
-				logtest.Scope{Name: name}: {
-					{Context: ctx},
-				},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rec := logtest.NewRecorder()
-			ls := NewLogSink(name, WithLoggerProvider(rec))
-			l := logr.New(ls)
-			tt.f(&l)
-
-			logtest.AssertEqual(t, tt.want, rec.Result(),
-				logtest.Transform(func(r logtest.Record) logtest.Record {
-					// Only compare the context, ignore the rest.
-					return logtest.Record{
-						Context: r.Context,
+			// Context is asserted separately because logtest.Record comparison
+			// treats context as an opaque field. A two-phase approach is used:
+			// first assert everything except context (above), then assert only
+			// context (below) when a specific context is expected.
+			if tt.wantCtx != nil {
+				wantCtxRecording := make(logtest.Recording, len(tt.want))
+				for scope, recs := range tt.want {
+					if recs == nil {
+						wantCtxRecording[scope] = nil
+						continue
 					}
-				}),
-			)
+					ctxRecs := make([]logtest.Record, len(recs))
+					for i := range recs {
+						ctxRecs[i] = logtest.Record{Context: tt.wantCtx}
+					}
+					wantCtxRecording[scope] = ctxRecs
+				}
+				logtest.AssertEqual(t, wantCtxRecording, rec.Result(),
+					logtest.Transform(func(r logtest.Record) logtest.Record {
+						// Only compare the context, ignore the rest.
+						return logtest.Record{Context: r.Context}
+					}),
+				)
+			}
 		})
 	}
 }
