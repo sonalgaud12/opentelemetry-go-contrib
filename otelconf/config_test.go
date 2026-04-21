@@ -875,7 +875,6 @@ var v10OpenTelemetryConfig = OpenTelemetryConfiguration{
 var v100OpenTelemetryConfigEnvParsing = OpenTelemetryConfiguration{
 	Disabled:   ptr(false),
 	FileFormat: "1.0",
-	LogLevel:   ptr(SeverityNumberInfo),
 	AttributeLimits: &AttributeLimits{
 		AttributeCountLimit:       ptr(128),
 		AttributeValueLengthLimit: ptr(4096),
@@ -1006,7 +1005,6 @@ func TestUnmarshalOpenTelemetryConfiguration(t *testing.T) {
 			wantType: OpenTelemetryConfiguration{
 				Disabled:   ptr(false),
 				FileFormat: "1.0",
-				LogLevel:   ptr(SeverityNumberInfo),
 			},
 		},
 		{
