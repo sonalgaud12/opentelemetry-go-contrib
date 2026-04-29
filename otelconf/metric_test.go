@@ -766,6 +766,66 @@ func TestReader(t *testing.T) {
 			wantErrT: newErrInvalid("no valid metric exporter"),
 		},
 		{
+			name: "periodic/console-exporter-with-cardinality-limits",
+			reader: MetricReader{
+				Periodic: &PeriodicMetricReader{
+					CardinalityLimits: &CardinalityLimits{
+						Counter:                 ptr(100),
+						UpDownCounter:           ptr(200),
+						Histogram:               ptr(300),
+						ObservableCounter:       ptr(400),
+						ObservableUpDownCounter: ptr(500),
+						ObservableGauge:         ptr(600),
+						Gauge:                   ptr(700),
+					},
+					Exporter: PushMetricExporter{
+						Console: &ConsoleMetricExporter{},
+					},
+				},
+			},
+			wantReader: sdkmetric.NewPeriodicReader(
+				consoleExporter,
+				sdkmetric.WithCardinalityLimitSelector(func(ik sdkmetric.InstrumentKind) (int, bool) {
+					switch ik {
+					case sdkmetric.InstrumentKindCounter:
+						return 100, false
+					case sdkmetric.InstrumentKindUpDownCounter:
+						return 200, false
+					case sdkmetric.InstrumentKindHistogram:
+						return 300, false
+					case sdkmetric.InstrumentKindObservableCounter:
+						return 400, false
+					case sdkmetric.InstrumentKindObservableUpDownCounter:
+						return 500, false
+					case sdkmetric.InstrumentKindObservableGauge:
+						return 600, false
+					case sdkmetric.InstrumentKindGauge:
+						return 700, false
+					}
+					return 0, true
+				}),
+			),
+		},
+		{
+			name: "periodic/console-exporter-with-default-cardinality-limit",
+			reader: MetricReader{
+				Periodic: &PeriodicMetricReader{
+					CardinalityLimits: &CardinalityLimits{
+						Default: ptr(50),
+					},
+					Exporter: PushMetricExporter{
+						Console: &ConsoleMetricExporter{},
+					},
+				},
+			},
+			wantReader: sdkmetric.NewPeriodicReader(
+				consoleExporter,
+				sdkmetric.WithCardinalityLimitSelector(func(sdkmetric.InstrumentKind) (int, bool) {
+					return 50, false
+				}),
+			),
+		},
+		{
 			name: "periodic/console-exporter",
 			reader: MetricReader{
 				Periodic: &PeriodicMetricReader{
@@ -818,6 +878,82 @@ func TestReader(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCardinalityLimitSelector(t *testing.T) {
+	allKinds := []sdkmetric.InstrumentKind{
+		sdkmetric.InstrumentKindCounter,
+		sdkmetric.InstrumentKindUpDownCounter,
+		sdkmetric.InstrumentKindHistogram,
+		sdkmetric.InstrumentKindObservableCounter,
+		sdkmetric.InstrumentKindObservableUpDownCounter,
+		sdkmetric.InstrumentKindObservableGauge,
+		sdkmetric.InstrumentKindGauge,
+	}
+
+	t.Run("per-kind limits", func(t *testing.T) {
+		cl := &CardinalityLimits{
+			Counter:                 ptr(100),
+			UpDownCounter:           ptr(200),
+			Histogram:               ptr(300),
+			ObservableCounter:       ptr(400),
+			ObservableUpDownCounter: ptr(500),
+			ObservableGauge:         ptr(600),
+			Gauge:                   ptr(700),
+		}
+		sel := cardinalityLimitSelector(cl)
+		expected := map[sdkmetric.InstrumentKind]int{
+			sdkmetric.InstrumentKindCounter:                 100,
+			sdkmetric.InstrumentKindUpDownCounter:           200,
+			sdkmetric.InstrumentKindHistogram:               300,
+			sdkmetric.InstrumentKindObservableCounter:       400,
+			sdkmetric.InstrumentKindObservableUpDownCounter: 500,
+			sdkmetric.InstrumentKindObservableGauge:         600,
+			sdkmetric.InstrumentKindGauge:                   700,
+		}
+		for _, ik := range allKinds {
+			limit, fallback := sel(ik)
+			assert.Equal(t, expected[ik], limit)
+			assert.False(t, fallback)
+		}
+	})
+
+	t.Run("default limit used when kind not set", func(t *testing.T) {
+		cl := &CardinalityLimits{
+			Default: ptr(50),
+		}
+		sel := cardinalityLimitSelector(cl)
+		for _, ik := range allKinds {
+			limit, fallback := sel(ik)
+			assert.Equal(t, 50, limit)
+			assert.False(t, fallback)
+		}
+	})
+
+	t.Run("per-kind overrides default", func(t *testing.T) {
+		cl := &CardinalityLimits{
+			Default: ptr(50),
+			Counter: ptr(100),
+		}
+		sel := cardinalityLimitSelector(cl)
+		limit, fallback := sel(sdkmetric.InstrumentKindCounter)
+		assert.Equal(t, 100, limit)
+		assert.False(t, fallback)
+
+		limit, fallback = sel(sdkmetric.InstrumentKindGauge)
+		assert.Equal(t, 50, limit)
+		assert.False(t, fallback)
+	})
+
+	t.Run("fallback to provider when no limit set", func(t *testing.T) {
+		cl := &CardinalityLimits{}
+		sel := cardinalityLimitSelector(cl)
+		for _, ik := range allKinds {
+			limit, fallback := sel(ik)
+			assert.Equal(t, 0, limit)
+			assert.True(t, fallback)
+		}
+	})
 }
 
 func TestView(t *testing.T) {

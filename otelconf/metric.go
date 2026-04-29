@@ -78,6 +78,10 @@ func metricReader(ctx context.Context, r MetricReader) (sdkmetric.Reader, error)
 		if r.Periodic.Timeout != nil {
 			opts = append(opts, sdkmetric.WithTimeout(time.Duration(*r.Periodic.Timeout)*time.Millisecond))
 		}
+
+		if r.Periodic.CardinalityLimits != nil {
+			opts = append(opts, sdkmetric.WithCardinalityLimitSelector(cardinalityLimitSelector(r.Periodic.CardinalityLimits)))
+		}
 		return periodicExporter(ctx, r.Periodic.Exporter, opts...)
 	}
 
@@ -89,6 +93,58 @@ func metricReader(ctx context.Context, r MetricReader) (sdkmetric.Reader, error)
 
 func pullReader(_ context.Context, _ PullMetricExporter) (sdkmetric.Reader, error) {
 	return nil, newErrInvalid("no valid metric exporter")
+}
+
+// cardinalityLimitSelector returns a CardinalityLimitSelector for the given CardinalityLimits config.
+func cardinalityLimitSelector(cl *CardinalityLimits) sdkmetric.CardinalityLimitSelector {
+	return func(ik sdkmetric.InstrumentKind) (int, bool) {
+		var limit *int
+		switch ik {
+		case sdkmetric.InstrumentKindCounter:
+			if cl.Counter != nil {
+				v := int(*cl.Counter)
+				limit = &v
+			}
+		case sdkmetric.InstrumentKindUpDownCounter:
+			if cl.UpDownCounter != nil {
+				v := int(*cl.UpDownCounter)
+				limit = &v
+			}
+		case sdkmetric.InstrumentKindHistogram:
+			if cl.Histogram != nil {
+				v := int(*cl.Histogram)
+				limit = &v
+			}
+		case sdkmetric.InstrumentKindObservableCounter:
+			if cl.ObservableCounter != nil {
+				v := int(*cl.ObservableCounter)
+				limit = &v
+			}
+		case sdkmetric.InstrumentKindObservableUpDownCounter:
+			if cl.ObservableUpDownCounter != nil {
+				v := int(*cl.ObservableUpDownCounter)
+				limit = &v
+			}
+		case sdkmetric.InstrumentKindObservableGauge:
+			if cl.ObservableGauge != nil {
+				v := int(*cl.ObservableGauge)
+				limit = &v
+			}
+		case sdkmetric.InstrumentKindGauge:
+			if cl.Gauge != nil {
+				v := int(*cl.Gauge)
+				limit = &v
+			}
+		}
+		if limit != nil {
+			return *limit, false
+		}
+		if cl.Default != nil {
+			return int(*cl.Default), false
+		}
+		// fallback=true; defer to the SDK/provider global cardinality limit
+		return 0, true
+	}
 }
 
 func periodicExporter(ctx context.Context, exporter PushMetricExporter, opts ...sdkmetric.PeriodicReaderOption) (sdkmetric.Reader, error) {
