@@ -20,7 +20,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/semconv/v1.40.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/semconv/v1.40.0/httpconv"
 )
 
@@ -153,6 +153,9 @@ func (n HTTPServer) RequestTraceAttrs(server string, req *http.Request, opts Req
 	if req.URL != nil && req.URL.Path != "" {
 		count++
 	}
+	if req.URL != nil && req.URL.RawQuery != "" {
+		count++
+	}
 
 	protoName, protoVersion := netProtocol(req.Proto)
 	if protoName != "" && protoName != "http" {
@@ -200,6 +203,9 @@ func (n HTTPServer) RequestTraceAttrs(server string, req *http.Request, opts Req
 
 	if req.URL != nil && req.URL.Path != "" {
 		attrs = append(attrs, semconv.URLPath(req.URL.Path))
+	}
+	if req.URL != nil && req.URL.RawQuery != "" {
+		attrs = append(attrs, semconv.URLQuery(req.URL.RawQuery))
 	}
 
 	if protoName != "" && protoName != "http" {

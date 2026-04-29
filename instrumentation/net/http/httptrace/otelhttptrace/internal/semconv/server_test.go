@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.opentelemetry.io/otel/attribute"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
 func TestHTTPServer_MetricAttributes(t *testing.T) {
@@ -170,6 +171,49 @@ func TestRequestTraceAttrs_HTTPRoute(t *testing.T) {
 				}
 			}
 			require.Equal(t, tt.wantRoute, gotRoute)
+		})
+	}
+}
+
+func TestRequestTraceAttrs_URLQuery(t *testing.T) {
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/path/abc123?foo=bar&baz=qux", http.NoBody)
+
+	attrs := (HTTPServer{}).RequestTraceAttrs("", req, RequestTraceAttrsOpts{})
+
+	var gotQuery string
+	for _, attr := range attrs {
+		if attr.Key == semconv.URLQueryKey {
+			gotQuery = attr.Value.AsString()
+			break
+		}
+	}
+	require.Equal(t, "foo=bar&baz=qux", gotQuery)
+}
+
+func TestRequestTraceAttrs_URLQueryAbsent(t *testing.T) {
+	tests := []struct {
+		name   string
+		target string
+	}{
+		{
+			name:   "no query",
+			target: "/path/abc123",
+		},
+		{
+			name:   "empty query",
+			target: "/path/abc123?",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.target, http.NoBody)
+
+			attrs := (HTTPServer{}).RequestTraceAttrs("", req, RequestTraceAttrsOpts{})
+
+			for _, attr := range attrs {
+				require.NotEqual(t, semconv.URLQueryKey, attr.Key)
+			}
 		})
 	}
 }
