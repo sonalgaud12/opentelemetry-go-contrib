@@ -96,51 +96,42 @@ func pullReader(_ context.Context, _ PullMetricExporter) (sdkmetric.Reader, erro
 }
 
 // cardinalityLimitSelector returns a CardinalityLimitSelector for the given CardinalityLimits config.
+// Note: this function is intentionally duplicated in otelconf/x because the two packages define
+// their own CardinalityLimits types. Changes here must be mirrored there.
 func cardinalityLimitSelector(cl *CardinalityLimits) sdkmetric.CardinalityLimitSelector {
 	return func(ik sdkmetric.InstrumentKind) (int, bool) {
-		var limit *int
 		switch ik {
 		case sdkmetric.InstrumentKindCounter:
 			if cl.Counter != nil {
-				v := int(*cl.Counter)
-				limit = &v
+				return *cl.Counter, false
 			}
 		case sdkmetric.InstrumentKindUpDownCounter:
 			if cl.UpDownCounter != nil {
-				v := int(*cl.UpDownCounter)
-				limit = &v
+				return *cl.UpDownCounter, false
 			}
 		case sdkmetric.InstrumentKindHistogram:
 			if cl.Histogram != nil {
-				v := int(*cl.Histogram)
-				limit = &v
+				return *cl.Histogram, false
 			}
 		case sdkmetric.InstrumentKindObservableCounter:
 			if cl.ObservableCounter != nil {
-				v := int(*cl.ObservableCounter)
-				limit = &v
+				return *cl.ObservableCounter, false
 			}
 		case sdkmetric.InstrumentKindObservableUpDownCounter:
 			if cl.ObservableUpDownCounter != nil {
-				v := int(*cl.ObservableUpDownCounter)
-				limit = &v
+				return *cl.ObservableUpDownCounter, false
 			}
 		case sdkmetric.InstrumentKindObservableGauge:
 			if cl.ObservableGauge != nil {
-				v := int(*cl.ObservableGauge)
-				limit = &v
+				return *cl.ObservableGauge, false
 			}
 		case sdkmetric.InstrumentKindGauge:
 			if cl.Gauge != nil {
-				v := int(*cl.Gauge)
-				limit = &v
+				return *cl.Gauge, false
 			}
 		}
-		if limit != nil {
-			return *limit, false
-		}
 		if cl.Default != nil {
-			return int(*cl.Default), false
+			return *cl.Default, false
 		}
 		// fallback=true; defer to the SDK/provider global cardinality limit
 		return 0, true

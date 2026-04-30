@@ -956,6 +956,50 @@ func TestCardinalityLimitSelector(t *testing.T) {
 	})
 }
 
+// TestMetricReaderCardinalityLimitsWired verifies that CardinalityLimits set on
+// a PeriodicMetricReader are actually wired into the returned SDK reader.
+// It records 3 distinct attribute sets with a per-kind limit of 1; the SDK
+// must produce exactly 1 data point (only the overflow bucket) rather than
+// 3, which would happen if the selector were never registered. With limit=1
+// the overflow slot consumes the entire limit, so no normal data points fit.
+func TestMetricReaderCardinalityLimitsWired(t *testing.T) {
+	ctx := context.Background()
+
+	reader, err := metricReader(ctx, MetricReader{
+		Periodic: &PeriodicMetricReader{
+			CardinalityLimits: &CardinalityLimits{
+				Counter: ptr(1),
+			},
+			Exporter: PushMetricExporter{
+				Console: &ConsoleMetricExporter{},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() { require.NoError(t, mp.Shutdown(ctx)) })
+
+	counter, err := mp.Meter("test").Int64Counter("cardinality.wiring.test")
+	require.NoError(t, err)
+
+	// Record 3 distinct attribute sets; with limit=1 the SDK must emit only
+	// 1 data point: the overflow bucket (the limit counts the overflow slot
+	// itself, so no "normal" data points fit alongside it).
+	counter.Add(ctx, 1, metric.WithAttributes(attribute.Int("k", 1)))
+	counter.Add(ctx, 1, metric.WithAttributes(attribute.Int("k", 2)))
+	counter.Add(ctx, 1, metric.WithAttributes(attribute.Int("k", 3)))
+
+	pr := reader.(*sdkmetric.PeriodicReader)
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, pr.Collect(ctx, &rm))
+
+	require.Len(t, rm.ScopeMetrics, 1)
+	require.Len(t, rm.ScopeMetrics[0].Metrics, 1)
+	dataPoints := rm.ScopeMetrics[0].Metrics[0].Data.(metricdata.Sum[int64]).DataPoints
+	assert.Len(t, dataPoints, 1)
+}
+
 func TestView(t *testing.T) {
 	testCases := []struct {
 		name            string
