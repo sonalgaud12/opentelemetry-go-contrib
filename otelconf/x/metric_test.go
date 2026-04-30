@@ -1057,7 +1057,7 @@ func TestMetricReaderCardinalityLimitsWired(t *testing.T) {
 	require.NoError(t, err)
 
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	t.Cleanup(func() { require.NoError(t, mp.Shutdown(ctx)) })
+	defer func() { assert.NoError(t, mp.Shutdown(t.Context())) }()
 
 	counter, err := mp.Meter("test").Int64Counter("cardinality.wiring.test")
 	require.NoError(t, err)
