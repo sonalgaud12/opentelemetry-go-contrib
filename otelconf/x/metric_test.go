@@ -1042,7 +1042,7 @@ func TestCardinalityLimitSelector(t *testing.T) {
 // 3, which would happen if the selector were never registered. With limit=1
 // the overflow slot consumes the entire limit, so no normal data points fit.
 func TestMetricReaderCardinalityLimitsWired(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	reader, err := metricReader(ctx, MetricReader{
 		Periodic: &PeriodicMetricReader{
